@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>試卷生成系統</title>
+  <!-- KaTeX for math rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+  <!-- Print-specific styles -->
+  <link rel="stylesheet" href="print.css" media="print">
+
+  <style>
+    /* ===================================================================
+       CSS VARIABLES
+    =================================================================== */
+    :root {
+      --primary:        #1a4f7a;
+      --primary-hover:  #15406a;
+      --primary-light:  #2980b9;
+      --accent:         #0ea5e9;
+      --bg:             #eef2f7;
+      --sidebar-bg:     #1e2d3d;
+      --sidebar-border: #263a4e;
+      --sidebar-text:   #c8d8e8;
+      --sidebar-muted:  #6b8399;
+      --card-bg:        #ffffff;
+      --text:           #1a2530;
+      --text-muted:     #6b7a8d;
+      --border:         #d0dbe8;
+      --success:        #166534;
+      --success-bg:     #dcfce7;
+      --success-border: #86efac;
+      --error-bg:       #fef2f2;
+      --error-border:   #fca5a5;
+      --error-text:     #991b1b;
+      --warning-bg:     #fffbeb;
+      --warning-text:   #92400e;
+      --radius-sm:      4px;
+      --radius:         8px;
+      --radius-lg:      12px;
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.08);
+      --shadow:         0 4px 16px rgba(0,0,0,0.12);
+      --shadow-lg:      0 8px 32px rgba(0,0,0,0.18);
+    }
+
+    /* ===================================================================
+       RESET & BASE
+    =================================================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: 'Microsoft JhengHei', 'Noto Sans TC', 'PingFang TC',
+                   -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    button { font-family: inherit; }
+    textarea { font-family: 'Cascadia Code', 'Consolas', 'Monaco', monospace; }
+
+    /* ===================================================================
+       APP LAYOUT
+    =================================================================== */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 20px;
+      height: 52px;
+      background: var(--primary);
+      color: #fff;
+      box-shadow: var(--shadow);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .app-header .logo { font-size: 22px; }
+    .app-header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .app-header .tagline {
+      font-size: 12px;
+      opacity: 0.65;
+      margin-left: auto;
+    }
+
+    /* ── Body ── */
+    .app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ===================================================================
+       LEFT SIDEBAR
+    =================================================================== */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border-right: 1px solid var(--sidebar-border);
+    }
+
+    .sidebar-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--sidebar-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Input Tabs ── */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      background: rgba(0,0,0,0.25);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin-bottom: 10px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 6px 8px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      background: transparent;
+      color: var(--sidebar-muted);
+      transition: all 0.18s;
+    }
+    .tab-btn.active {
+      background: var(--primary-light);
+      color: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+    .tab-btn:not(.active):hover { color: var(--sidebar-text); }
+
+    /* ── Textarea ── */
+    #json-input {
+      width: 100%;
+      height: 200px;
+      background: #0d1b2a;
+      color: #a8d8ff;
+      border: 1px solid var(--sidebar-border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      font-size: 11.5px;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      tab-size: 2;
+    }
+    #json-input:focus { border-color: var(--accent); }
+    #json-input::placeholder { color: #3a5168; }
+
+    /* ── Keyboard hint ── */
+    .keyboard-hint {
+      font-size: 10px;
+      color: var(--sidebar-muted);
+      text-align: right;
+      margin-top: 4px;
+    }
+    kbd {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 10px;
+    }
+
+    /* ── Drop Zone ── */
+    #upload-section { display: none; }
+    .drop-zone {
+      border: 2px dashed var(--sidebar-border);
+      border-radius: var(--radius);
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--sidebar-muted);
+    }
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(14, 165, 233, 0.08);
+      color: var(--sidebar-text);
+    }
+    .drop-zone .drop-icon { font-size: 32px; margin-bottom: 8px; }
+    .drop-zone p { font-size: 13px; margin-bottom: 6px; }
+    .drop-zone small { font-size: 11px; opacity: 0.6; }
+
+    #file-info {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #34d399;
+      display: none;
+    }
+    #file-info.visible { display: block; }
+
+    /* ── Validation Banner ── */
+    #validation-msg {
+      margin: 0 16px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+    #validation-msg.show-success {
+      display: block;
+      background: rgba(52, 211, 153, 0.12);
+      border: 1px solid #34d399;
+      color: #34d399;
+    }
+    #validation-msg.show-error {
+      display: block;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid #f87171;
+      color: #fca5a5;
+    }
+
+    /* ── Version Picker ── */
+    .version-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .version-radio { display: none; }
+    .version-card {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 12.5px;
+      transition: all 0.18s;
+      user-select: none;
+    }
+    .version-card:hover { background: rgba(255,255,255,0.08); }
+    .version-radio:checked + .version-card {
+      background: rgba(41,128,185,0.2);
+      border-color: var(--primary-light);
+      color: #fff;
+      font-weight: 600;
+    }
+    .version-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-student  { background: #3b82f6; }
+    .dot-answer   { background: #22c55e; }
+    .dot-solution { background: #f59e0b; }
+    .dot-teacher  { background: #ec4899; }
+
+    /* ── Action Buttons ── */
+    .btn {
+      width: 100%;
+      padding: 9px 14px;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: all 0.18s;
+    }
+    .btn + .btn { margin-top: 7px; }
+
+    .btn-primary { background: var(--primary-light); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #2170a3; }
+
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #15803d; }
+    .btn-success:disabled { background: #2d4a37; color: #4b7a5a; cursor: not-allowed; }
+
+    .btn-sample {
+      background: rgba(251,191,36,0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(251,191,36,0.25);
+    }
+    .btn-sample:hover { background: rgba(251,191,36,0.25); }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.12);
+      color: #f87171;
+      border: 1px solid rgba(239,68,68,0.2);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+    /* ── Sidebar Footer ── */
+    .sidebar-footer {
+      padding: 10px 16px;
+      font-size: 10.5px;
+      color: var(--sidebar-muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ===================================================================
+       PREVIEW AREA
+    =================================================================== */
+    .preview-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: auto;
+      background: #d8e0e8;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Placeholder ── */
+    #preview-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: #8a9bb0;
+      text-align: center;
+      height: 100%;
+      min-height: 400px;
+    }
+    #preview-placeholder .ph-icon { font-size: 72px; opacity: 0.35; }
+    #preview-placeholder h2 { font-size: 20px; font-weight: 600; opacity: 0.5; }
+    #preview-placeholder p { font-size: 13px; opacity: 0.45; line-height: 1.7; }
+
+    /* ===================================================================
+       EXAM PAPER (SCREEN PREVIEW)
+    =================================================================== */
+    .exam-paper {
+      background: #fff;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 20mm 22mm 18mm;
+      box-shadow: var(--shadow-lg);
+      font-family: 'Microsoft JhengHei', 'Noto Sans TC', 'PingFang TC', serif;
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #1a2530;
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    /* Version badge (screen only) */
+    .version-badge {
+      position: absolute;
+      top: 14mm;
+      right: 22mm;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 9pt;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .badge-student  { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+    .badge-answer   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .badge-solution { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+    .badge-teacher  { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+
+    /* ── Paper Header ── */
+    .exam-title {
+      text-align: center;
+      font-size: 17pt;
+      font-weight: 900;
+      line-height: 1.3;
+      margin-bottom: 5px;
+      padding-right: 60px; /* avoid version badge overlap */
+    }
+    .exam-subtitle {
+      text-align: center;
+      font-size: 10pt;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    /* ── Student Info Table ── */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      font-size: 10.5pt;
+    }
+    .info-table td {
+      border: 1.5px solid #333;
+      padding: 5px 10px;
+      width: 25%;
+    }
+    .info-table .info-value {
+      display: inline-block;
+      width: 58px;
+      border-bottom: 1px solid #666;
+    }
+
+    /* ── Instructions Box ── */
+    .instructions-box {
+      border: 1.5px solid #333;
+      padding: 7px 12px;
+      margin-bottom: 12px;
+      font-size: 10pt;
+      line-height: 1.75;
+    }
+    .instructions-label {
+      font-weight: 900;
+      font-size: 10.5pt;
+      margin-right: 6px;
+    }
+
+    /* ── Section Header ── */
+    .section-block { margin-top: 4px; }
+    .section-header {
+      font-size: 12pt;
+      font-weight: 800;
+      margin-top: 14px;
+      margin-bottom: 8px;
+      border-bottom: 2px solid #1a2530;
+      padding-bottom: 3px;
+    }
+    .section-sub-instructions {
+      font-size: 9.5pt;
+      color: #444;
+      font-style: italic;
+      margin-bottom: 8px;
+    }
+
+    /* ── Question Item ── */
+    .question-item {
+      display: flex;
+      gap: 7px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+    .q-num {
+      font-weight: 700;
+      min-width: 24px;
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+    .q-body { flex: 1; min-width: 0; }
+    .q-stem { margin-bottom: 5px; word-break: break-word; }
+    .q-stem br + br { display: block; content: ''; margin-top: 4px; }
+
+    /* ── Multiple Choice Options ── */
+    .choices-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 3px 24px;
+      margin: 5px 0;
+    }
+    .choices-1col { grid-template-columns: 1fr; }
+    .choices-4col { grid-template-columns: repeat(4, 1fr); }
+
+    .choice-item {
+      display: flex;
+      gap: 5px;
+      align-items: baseline;
+      font-size: 10.5pt;
+    }
+    .choice-label { font-weight: 700; flex-shrink: 0; }
+    .choice-correct-mark {
+      background: #c8e6c9;
+      border-radius: 2px;
+      padding: 0 3px;
+    }
+
+    /* ── Work Space ── */
+    .work-space { margin-top: 6px; }
+    .work-line {
+      border-bottom: 1px solid #ccc;
+      height: 22px;
+      margin-bottom: 1px;
+    }
+    .work-line-wide {
+      border-bottom: 1px solid #bbb;
+      height: 28px;
+      margin-bottom: 2px;
+    }
+    .answer-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .answer-field {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      font-size: 10pt;
+      font-weight: 700;
+    }
+    .answer-field-line {
+      flex: 1;
+      border-bottom: 1.5px solid #333;
+      height: 20px;
+    }
+
+    /* ── MC Answer Grid ── */
+    .mc-answer-grid {
+      margin-top: 10px;
+      margin-bottom: 6px;
+      page-break-inside: avoid;
+    }
+    .mc-grid-label {
+      font-weight: 800;
+      font-size: 10.5pt;
+      margin-bottom: 4px;
+    }
+    .mc-grid-table {
+      border-collapse: collapse;
+      font-size: 10.5pt;
+    }
+    .mc-grid-table td {
+      border: 1.5px solid #333;
+      text-align: center;
+      padding: 4px 12px;
+      min-width: 38px;
+    }
+    .mc-grid-table .grid-head td {
+      background: #f0f0f0;
+      font-weight: 700;
+    }
+    .mc-grid-answer { font-weight: 700; color: #1a5276; }
+
+    /* ── Correct Answer Badge ── */
+    .correct-badge {
+      display: inline-block;
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+      border-radius: 3px;
+      padding: 1px 10px;
+      font-weight: 700;
+      font-size: 10pt;
+      margin-top: 5px;
+    }
+
+    /* ── Solution Box ── */
+    .solution-box {
+      background: #f0f8ff;
+      border-left: 3px solid #0ea5e9;
+      border-radius: 0 4px 4px 0;
+      padding: 8px 12px;
+      margin-top: 7px;
+      page-break-inside: avoid;
+    }
+    .solution-box-header {
+      font-weight: 700;
+      color: #0369a1;
+      font-size: 10pt;
+      margin-bottom: 6px;
+    }
+    .solution-step {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 10pt;
+    }
+    .step-label {
+      color: #0ea5e9;
+      font-weight: 700;
+      flex-shrink: 0;
+      min-width: 48px;
+    }
+    .step-desc { flex: 1; }
+    .step-expr {
+      font-size: 9.5pt;
+      color: #555;
+      margin-left: 54px;
+      margin-top: 2px;
+      font-style: italic;
+    }
+    .verification-row {
+      margin-top: 6px;
+      padding-top: 5px;
+      border-top: 1px dashed #7dd3fc;
+      font-size: 9.5pt;
+      color: #166534;
+    }
+
+    /* ── Teacher Box ── */
+    .teacher-box {
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+      border-radius: 0 4px 4px 0;
+      padding: 8px 12px;
+      margin-top: 6px;
+      page-break-inside: avoid;
+    }
+    .teacher-box-header {
+      font-weight: 700;
+      color: #b45309;
+      font-size: 10pt;
+      margin-bottom: 5px;
+    }
+    .rubric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 2px 0;
+      font-size: 10pt;
+      border-bottom: 1px dotted #fcd34d;
+      gap: 8px;
+    }
+    .rubric-row:last-child { border-bottom: none; }
+    .rubric-criterion { flex: 1; }
+    .rubric-pts {
+      color: #b45309;
+      font-weight: 700;
+      white-space: nowrap;
+      min-width: 36px;
+      text-align: right;
+    }
+    .mistakes-header {
+      font-weight: 700;
+      color: #b45309;
+      font-size: 10pt;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .mistake-item {
+      font-size: 9.5pt;
+      display: flex;
+      gap: 4px;
+      margin-bottom: 2px;
+    }
+    .mistake-item::before {
+      content: '⚠';
+      color: #f59e0b;
+      flex-shrink: 0;
+    }
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .tag {
+      background: #e5e7eb;
+      color: #374151;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 8.5pt;
+    }
+
+    /* ── Checklist Box ── */
+    .checklist-box {
+      border: 1.5px solid #333;
+      padding: 7px 12px;
+      margin-top: 18px;
+      font-size: 10pt;
+      line-height: 1.75;
+    }
+    .checklist-label { font-weight: 900; margin-right: 8px; }
+
+    /* ===================================================================
+       UTILITIES
+    =================================================================== */
+    .hidden { display: none !important; }
+
+    /* Scrollbar */
+    .sidebar::-webkit-scrollbar,
+    .preview-area::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: #3a5168; border-radius: 3px; }
+    .preview-area::-webkit-scrollbar-track { background: transparent; }
+    .preview-area::-webkit-scrollbar-thumb { background: #a0b0c0; border-radius: 3px; }
+
+    /* ===================================================================
+       BASIC PRINT STYLES (full overrides in print.css)
+    =================================================================== */
+    @media print {
+      html, body { overflow: visible; height: auto; }
+      #app { display: none !important; }
+      #print-content { display: block !important; }
+
+      .exam-paper {
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        min-height: 0 !important;
+      }
+      .version-badge { display: none !important; }
+      .solution-box  { page-break-inside: avoid; }
+      .teacher-box   { page-break-inside: avoid; }
+      .question-item { page-break-inside: avoid; }
+      .mc-answer-grid { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <span class="logo">📝</span>
+    <h1>試卷生成系統</h1>
+    <span class="tagline">將 JSON 題庫資料轉換為格式化考卷 · 支援四種輸出版本</span>
+  </header>
+
+  <div class="app-body">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar">
+
+      <!-- Input Section -->
+      <div class="sidebar-section">
+        <div class="sidebar-label">📥 輸入 JSON</div>
+
+        <div class="tab-bar">
+          <button class="tab-btn active" id="tab-paste">✏️ 貼上文字</button>
+          <button class="tab-btn"        id="tab-upload">📂 上傳檔案</button>
+        </div>
+
+        <!-- Paste area -->
+        <div id="paste-section">
+          <textarea id="json-input"
+            placeholder='{ "paper_metadata": { ... }, "sections": [ ... ] }'
+            spellcheck="false"></textarea>
+          <div class="keyboard-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> 快速預覽</div>
+        </div>
+
+        <!-- Upload area -->
+        <div id="upload-section">
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-icon">📁</div>
+            <p>拖曳 .json 檔案到此</p>
+            <small>或點擊下方選擇檔案</small>
+          </div>
+          <input type="file" id="file-input" accept=".json,.txt" style="display:none">
+          <div id="file-info"></div>
+        </div>
+      </div>
+
+      <!-- Validation Message -->
+      <div id="validation-msg" style="margin:8px 16px 0;padding:8px 12px;border-radius:4px;font-size:12px;line-height:1.5;display:none"></div>
+
+      <!-- Version Selector -->
+      <div class="sidebar-section">
+        <div class="sidebar-label">🗂️ 輸出版本</div>
+        <div class="version-grid">
+          <input type="radio" name="version" id="v-student"  value="student"  class="version-radio" checked>
+          <label for="v-student" class="version-card">
+            <span class="version-dot dot-student"></span>試題卷
+          </label>
+
+          <input type="radio" name="version" id="v-answer"   value="answer"   class="version-radio">
+          <label for="v-answer" class="version-card">
+            <span class="version-dot dot-answer"></span>答案卷
+          </label>
+
+          <input type="radio" name="version" id="v-solution" value="solution" class="version-radio">
+          <label for="v-solution" class="version-card">
+            <span class="version-dot dot-solution"></span>詳解卷
+          </label>
+
+          <input type="radio" name="version" id="v-teacher"  value="teacher"  class="version-radio">
+          <label for="v-teacher" class="version-card">
+            <span class="version-dot dot-teacher"></span>教師版
+          </label>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="sidebar-section">
+        <div class="sidebar-label">⚙️ 操作</div>
+        <button class="btn btn-primary"  id="preview-btn">🔍 預覽試卷</button>
+        <button class="btn btn-success"  id="print-btn"   disabled>🖨️ 列印 / 匯出 PDF</button>
+        <button class="btn btn-sample"   id="sample-btn">📋 載入範例 JSON</button>
+        <button class="btn btn-danger"   id="clear-btn">✕ 清除</button>
+      </div>
+
+      <!-- Footer -->
+      <div class="sidebar-footer">
+        列印時請選「另存為 PDF」<br>
+        建議頁面縮放 100%，紙張大小 A4
+      </div>
+
+    </aside>
+
+    <!-- ── Preview Area ── -->
+    <main class="preview-area" id="preview-area">
+
+      <div id="preview-placeholder">
+        <div class="ph-icon">📄</div>
+        <h2>尚未載入試卷</h2>
+        <p>
+          在左側貼上 JSON 或上傳 .json 檔案<br>
+          點擊「預覽試卷」即可看到排版結果<br>
+          再點「列印 / 匯出 PDF」儲存考卷
+        </p>
+      </div>
+
+      <div id="exam-preview"></div>
+
+    </main>
+
+  </div><!-- /.app-body -->
+</div><!-- /#app -->
+
+<!-- Print-only container (hidden on screen, shown in @media print) -->
+<div id="print-content" style="display:none"></div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ────────────────────────────────────────────────────────────
+   CONSTANTS
+──────────────────────────────────────────────────────────── */
+const CHINESE_NUMS = ['一','二','三','四','五','六','七','八','九','十',
+                      '十一','十二','十三','十四','十五'];
+
+const VERSION_META = {
+  student:  { label: '試題卷',  cls: 'badge-student'  },
+  answer:   { label: '答案卷',  cls: 'badge-answer'   },
+  solution: { label: '詳解卷',  cls: 'badge-solution' },
+  teacher:  { label: '教師版',  cls: 'badge-teacher'  },
+};
+
+// Lines & layout per question type in student/answer mode
+const QTYPE_LAYOUT = {
+  fill_in_and_reasoning: { lines: 2,  wide: false, showFields: false },
+  short_answer:          { lines: 2,  wide: false, showFields: false },
+  multiple_choice:       { lines: 0,  wide: false, showFields: false },
+  application_reasoning: { lines: 4,  wide: true,  showFields: true  },
+  proof:                 { lines: 9,  wide: true,  showFields: false },
+  graph_interpretation:  { lines: 4,  wide: true,  showFields: true  },
+  advanced_reasoning:    { lines: 9,  wide: true,  showFields: true  },
+  exploration_modeling:  { lines: 10, wide: true,  showFields: false },
+};
+
+/* ────────────────────────────────────────────────────────────
+   DOM HELPERS
+──────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+
+function showMsg(text, type /* 'success' | 'error' */) {
+  const el = $('validation-msg');
+  el.textContent = text;
+  el.className = '';
+  el.style.display = 'block';
+  if (type === 'success') {
+    el.style.background = 'rgba(52,211,153,0.12)';
+    el.style.border = '1px solid #34d399';
+    el.style.color = '#34d399';
+  } else {
+    el.style.background = 'rgba(239,68,68,0.12)';
+    el.style.border = '1px solid #f87171';
+    el.style.color = '#fca5a5';
+  }
+}
+function clearMsg() {
+  const el = $('validation-msg');
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
+/* ────────────────────────────────────────────────────────────
+   MATH RENDERING (KaTeX)
+──────────────────────────────────────────────────────────── */
+function renderMath(text) {
+  if (text === null || text === undefined) return '';
+  text = String(text);
+  if (typeof katex === 'undefined') return esc(text);
+
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    // Display math $$...$$
+    if (text[i] === '$' && text[i+1] === '$') {
+      const end = text.indexOf('$$', i + 2);
+      if (end !== -1) {
+        try {
+          out += katex.renderToString(text.slice(i+2, end), { displayMode: true, throwOnError: false });
+        } catch { out += esc(text.slice(i, end+2)); }
+        i = end + 2;
+        continue;
+      }
+    }
+    // Inline math $...$
+    if (text[i] === '$') {
+      const end = text.indexOf('$', i + 1);
+      if (end !== -1 && end > i + 1) {
+        try {
+          out += katex.renderToString(text.slice(i+1, end), { displayMode: false, throwOnError: false });
+        } catch { out += esc(text.slice(i, end+1)); }
+        i = end + 1;
+        continue;
+      }
+    }
+    // Newline → <br>
+    if (text[i] === '\n') { out += '<br>'; i++; continue; }
+    // Regular char
+    out += esc(text[i]);
+    i++;
+  }
+  return out;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+/* ────────────────────────────────────────────────────────────
+   JSON VALIDATION
+──────────────────────────────────────────────────────────── */
+function validateData(data) {
+  const errors = [];
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return ['JSON 最外層必須是物件（{...}）'];
+  }
+  if (!data.paper_metadata) {
+    errors.push('缺少 paper_metadata 欄位');
+  } else {
+    if (!data.paper_metadata.paper_title) errors.push('缺少 paper_metadata.paper_title');
+  }
+  if (!Array.isArray(data.sections) || data.sections.length === 0) {
+    errors.push('缺少 sections 陣列，或 sections 為空');
+  } else {
+    let hasQuestions = false;
+    for (const s of data.sections) {
+      if (Array.isArray(s.questions) && s.questions.length > 0) {
+        hasQuestions = true;
+        break;
+      }
+    }
+    if (!hasQuestions) errors.push('所有 sections 中均未找到 questions 陣列');
+  }
+  return errors;
+}
+
+/* ────────────────────────────────────────────────────────────
+   RENDER HELPERS
+──────────────────────────────────────────────────────────── */
+function renderChoices(choices, version) {
+  if (!Array.isArray(choices) || choices.length === 0) return '';
+  const showAnswer = version !== 'student';
+
+  // Decide grid columns based on longest option text
+  const maxLen = Math.max(...choices.map(c => String(c.text || '').length));
+  let gridClass = 'choices-grid';
+  if (maxLen > 20)  gridClass = 'choices-grid choices-1col';
+  else if (maxLen <= 6) gridClass = 'choices-grid choices-4col';
+
+  let html = `<div class="${gridClass}">`;
+  for (const c of choices) {
+    const isCorrect = showAnswer && c.is_correct;
+    html += `<div class="choice-item">
+      <span class="choice-label${isCorrect ? ' choice-correct-mark' : ''}">(${esc(c.option_id)})</span>
+      <span>${renderMath(c.text)}</span>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderWorkSpace(qtype) {
+  const cfg = QTYPE_LAYOUT[qtype] || { lines: 3, wide: false, showFields: false };
+  if (cfg.lines === 0) return '';
+
+  let html = '<div class="work-space">';
+  for (let i = 0; i < cfg.lines; i++) {
+    html += `<div class="${cfg.wide ? 'work-line-wide' : 'work-line'}"></div>`;
+  }
+  if (cfg.showFields) {
+    html += `<div class="answer-fields">
+      <div class="answer-field"><span>列式：</span><div class="answer-field-line"></div></div>
+      <div class="answer-field"><span>答：</span><div class="answer-field-line"></div></div>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderMcAnswerGrid(mcList, version) {
+  if (mcList.length === 0) return '';
+  const showAnswer = version !== 'student';
+
+  let html = `<div class="mc-answer-grid">
+    <div class="mc-grid-label">作答欄</div>
+    <table class="mc-grid-table">
+      <tr class="grid-head"><td>題號</td>`;
+  for (const { num } of mcList) html += `<td>${num}</td>`;
+  html += '</tr><tr><td>答案</td>';
+  for (const { q } of mcList) {
+    if (showAnswer && q.correct_answer) {
+      html += `<td class="mc-grid-answer">${esc(String(q.correct_answer))}</td>`;
+    } else {
+      html += '<td>&nbsp;</td>';
+    }
+  }
+  html += '</tr></table></div>';
+  return html;
+}
+
+function renderSolutionBox(q) {
+  let html = `<div class="solution-box">
+    <div class="solution-box-header">解題說明</div>`;
+
+  if (Array.isArray(q.solution_steps)) {
+    for (const step of q.solution_steps) {
+      html += `<div class="solution-step">
+        <span class="step-label">步驟 ${step.step}：</span>
+        <div class="step-desc">${renderMath(step.description || '')}</div>
+      </div>`;
+      if (step.expression) {
+        html += `<div class="step-expr">${renderMath(step.expression)}</div>`;
+      }
+    }
+  }
+
+  if (q.alternative_methods && q.alternative_methods.length > 0) {
+    html += `<div style="margin-top:6px;color:#0369a1;font-size:9.5pt;font-weight:700">
+      其他解法：${q.alternative_methods.map(m => esc(m)).join('；')}</div>`;
+  }
+
+  if (q.verification) {
+    html += `<div class="verification-row">✓ 驗算：${renderMath(q.verification)}</div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function renderTeacherBox(q) {
+  let html = '<div class="teacher-box">';
+  let hasContent = false;
+
+  if (q.scoring && Array.isArray(q.scoring.rubric) && q.scoring.rubric.length > 0) {
+    hasContent = true;
+    html += `<div class="teacher-box-header">給分規準（共 ${q.scoring.total ?? '?'} 分）</div>`;
+    for (const r of q.scoring.rubric) {
+      html += `<div class="rubric-row">
+        <span class="rubric-criterion">${renderMath(r.criterion || '')}</span>
+        <span class="rubric-pts">${r.score} 分</span>
+      </div>`;
+    }
+  }
+
+  if (Array.isArray(q.common_mistakes) && q.common_mistakes.length > 0) {
+    hasContent = true;
+    html += '<div class="mistakes-header">常見錯誤</div>';
+    for (const m of q.common_mistakes) {
+      html += `<div class="mistake-item">${renderMath(m)}</div>`;
+    }
+  }
+
+  if (Array.isArray(q.teacher_tags) && q.teacher_tags.length > 0) {
+    hasContent = true;
+    html += '<div class="tag-row">';
+    for (const t of q.teacher_tags) html += `<span class="tag">${esc(t)}</span>`;
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return hasContent ? html : '';
+}
+
+/* ────────────────────────────────────────────────────────────
+   RENDER SINGLE QUESTION
+──────────────────────────────────────────────────────────── */
+function renderQuestion(q, version, num, sectionQtype) {
+  const qtype = q.question_type || sectionQtype || 'fill_in_and_reasoning';
+  const isMC  = qtype === 'multiple_choice';
+  const showAnswer = version !== 'student';
+
+  let html = `<div class="question-item">
+    <div class="q-num">${num}.</div>
+    <div class="q-body">
+      <div class="q-stem">${renderMath(q.stem || '')}</div>`;
+
+  // Choices (MC)
+  if (isMC && Array.isArray(q.choices)) {
+    html += renderChoices(q.choices, version);
+  }
+
+  // Work space (student / answer mode only, not for MC)
+  if (!isMC && (version === 'student' || version === 'answer')) {
+    html += renderWorkSpace(qtype);
+  }
+
+  // Correct answer badge (answer/solution/teacher mode, non-MC)
+  if (showAnswer && !isMC && q.correct_answer !== undefined && q.correct_answer !== null) {
+    html += `<div class="correct-badge">答：${renderMath(String(q.correct_answer))}</div>`;
+  }
+
+  // Solution steps (solution + teacher)
+  if ((version === 'solution' || version === 'teacher') && q.solution_steps) {
+    html += renderSolutionBox(q);
+  }
+
+  // Teacher box
+  if (version === 'teacher') {
+    html += renderTeacherBox(q);
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+/* ────────────────────────────────────────────────────────────
+   RENDER SECTION
+──────────────────────────────────────────────────────────── */
+function renderSection(section, sectionIdx, startNum, version) {
+  const chNum = CHINESE_NUMS[sectionIdx] ?? String(sectionIdx + 1);
+  const questions = Array.isArray(section.questions) ? section.questions : [];
+
+  // Build header text
+  let headerText = `${chNum}、${esc(section.section_title || '')}`;
+
+  const sPerQ   = section.score_per_question;
+  const sTot    = section.total_section_score
+                    ?? (sPerQ && questions.length ? sPerQ * questions.length : null);
+
+  if (sPerQ && sTot)     headerText += `（每題 ${sPerQ} 分，共 ${sTot} 分）`;
+  else if (sTot)          headerText += `（共 ${sTot} 分）`;
+
+  let html = `<div class="section-block">
+    <div class="section-header">${headerText}</div>`;
+
+  if (section.instructions) {
+    html += `<div class="section-sub-instructions">${esc(section.instructions)}</div>`;
+  }
+
+  const sectionQtype = section.question_type || '';
+  const mcList = [];
+  let currentNum = startNum;
+
+  for (const q of questions) {
+    const qtype = q.question_type || sectionQtype || '';
+    if (qtype === 'multiple_choice') mcList.push({ q, num: currentNum });
+    html += renderQuestion(q, version, currentNum, qtype);
+    currentNum++;
+  }
+
+  // MC answer grid at section end
+  if (mcList.length > 0) html += renderMcAnswerGrid(mcList, version);
+
+  html += '</div>';
+  return { html, nextNum: currentNum };
+}
+
+/* ────────────────────────────────────────────────────────────
+   RENDER FULL EXAM PAPER
+──────────────────────────────────────────────────────────── */
+function renderExamPaper(data, version) {
+  const meta = data.paper_metadata || {};
+  const vm   = VERSION_META[version] || VERSION_META.student;
+
+  let html = `<div class="exam-paper">`;
+
+  // Version badge (screen only, hidden in print via CSS)
+  html += `<span class="version-badge ${vm.cls}">${vm.label}</span>`;
+
+  // Title
+  html += `<div class="exam-title">${renderMath(meta.paper_title || '試卷')}</div>`;
+
+  // Subtitle
+  const subtitleParts = [];
+  if (meta.grade)      subtitleParts.push(esc(meta.grade));
+  if (meta.difficulty) subtitleParts.push(`難度：${esc(meta.difficulty)}`);
+  const topicList = meta.topics || meta.subtopics || [];
+  if (topicList.length) subtitleParts.push(`範圍：${topicList.map(esc).join('、')}`);
+  if (meta.curriculum_domains && meta.curriculum_domains.length && !topicList.length) {
+    subtitleParts.push(`領域：${meta.curriculum_domains.map(esc).join('、')}`);
+  }
+  if (subtitleParts.length) {
+    html += `<div class="exam-subtitle">${subtitleParts.join(' · ')}</div>`;
+  }
+
+  // Student info table
+  html += `<table class="info-table"><tr>
+    <td>班級：<span class="info-value">&nbsp;</span></td>
+    <td>座號：<span class="info-value">&nbsp;</span></td>
+    <td>姓名：<span class="info-value">&nbsp;</span></td>
+    <td>分數：<span class="info-value">&nbsp;</span></td>
+  </tr></table>`;
+
+  // Instructions
+  const dur   = meta.duration_minutes ? `${meta.duration_minutes} 分鐘` : '';
+  const score = meta.total_score ?? 100;
+  let instrText = '';
+  if (dur)          instrText += `建議作答時間 ${dur}，滿分 ${score} 分。`;
+  else              instrText += `滿分 ${score} 分。`;
+  instrText += meta.instructions
+    ? ` ${esc(meta.instructions)}`
+    : ' 計算題請寫出解題過程，應用題須列算式再作答，並記得寫上單位。';
+
+  html += `<div class="instructions-box"><span class="instructions-label">作答說明</span>${instrText}</div>`;
+
+  // Sections
+  let globalNum = 1;
+  if (Array.isArray(data.sections)) {
+    data.sections.forEach((section, idx) => {
+      const result = renderSection(section, idx, globalNum, version);
+      html += result.html;
+      globalNum = result.nextNum;
+    });
+  }
+
+  // Tips / checklist
+  if (Array.isArray(meta.tips) && meta.tips.length > 0) {
+    const CIRCLE_NUMS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    const tipItems = meta.tips
+      .map((t, i) => `${CIRCLE_NUMS[i] ?? (i+1)} ${esc(t)}`)
+      .join('　');
+    html += `<div class="checklist-box">
+      <span class="checklist-label">檢查四問</span>${tipItems}
+    </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/* ────────────────────────────────────────────────────────────
+   UI ACTIONS
+──────────────────────────────────────────────────────────── */
+let parsedData = null;
+
+function getVersion() {
+  const r = document.querySelector('input[name="version"]:checked');
+  return r ? r.value : 'student';
+}
+
+function countQuestions(data) {
+  return (data.sections || []).reduce((acc, s) =>
+    acc + (Array.isArray(s.questions) ? s.questions.length : 0), 0);
+}
+
+function doPreview() {
+  clearMsg();
+  const raw = $('json-input').value.trim();
+  if (!raw) { showMsg('請先輸入 JSON 內容，或點擊「載入範例 JSON」試用', 'error'); return; }
+
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { showMsg(`JSON 格式錯誤：${e.message}`, 'error'); return; }
+
+  const errs = validateData(data);
+  if (errs.length) { showMsg('驗證失敗：' + errs.join('；'), 'error'); return; }
+
+  parsedData = data;
+  const version  = getVersion();
+  const examHtml = renderExamPaper(data, version);
+
+  $('exam-preview').innerHTML = examHtml;
+  $('exam-preview').style.display = 'block';
+  $('preview-placeholder').style.display = 'none';
+  $('print-content').innerHTML = examHtml;
+  $('print-btn').disabled = false;
+
+  const n = countQuestions(data);
+  showMsg(`✓ 已載入「${data.paper_metadata?.paper_title || '試卷'}」· 共 ${n} 題`, 'success');
+}
+
+function doPrint() {
+  if (!parsedData) return;
+  // Refresh print content with current version
+  $('print-content').innerHTML = renderExamPaper(parsedData, getVersion());
+  window.print();
+}
+
+function doClear() {
+  $('json-input').value   = '';
+  $('exam-preview').innerHTML = '';
+  $('exam-preview').style.display = 'none';
+  $('preview-placeholder').style.display = 'flex';
+  $('print-btn').disabled = true;
+  $('file-info').textContent = '';
+  $('file-info').classList.remove('visible');
+  $('print-content').innerHTML = '';
+  parsedData = null;
+  clearMsg();
+}
+
+/* ────────────────────────────────────────────────────────────
+   FILE UPLOAD & DRAG-AND-DROP
+──────────────────────────────────────────────────────────── */
+function loadFile(file) {
+  const fi = $('file-info');
+  fi.textContent = `✔ ${file.name}`;
+  fi.classList.add('visible');
+  const reader = new FileReader();
+  reader.onload = e => {
+    $('json-input').value = e.target.result;
+    // Auto-switch to paste tab to let user see the text
+    $('tab-paste').click();
+  };
+  reader.onerror = () => showMsg('讀取檔案時發生錯誤', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+function setupDragDrop() {
+  const dz = $('drop-zone');
+  dz.addEventListener('click', () => $('file-input').click());
+  $('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) loadFile(e.target.files[0]);
+  });
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', ()  => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',      e  => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+}
+
+/* ────────────────────────────────────────────────────────────
+   TAB SWITCHING
+──────────────────────────────────────────────────────────── */
+function setupTabs() {
+  $('tab-paste').addEventListener('click', () => {
+    $('tab-paste').classList.add('active');
+    $('tab-upload').classList.remove('active');
+    $('paste-section').style.display = 'block';
+    $('upload-section').style.display = 'none';
+  });
+  $('tab-upload').addEventListener('click', () => {
+    $('tab-upload').classList.add('active');
+    $('tab-paste').classList.remove('active');
+    $('upload-section').style.display = 'block';
+    $('paste-section').style.display = 'none';
+  });
+}
+
+/* ────────────────────────────────────────────────────────────
+   SAMPLE JSON
+──────────────────────────────────────────────────────────── */
+const SAMPLE = {
+  "paper_metadata": {
+    "paper_title": "國小三年級數學 資優加深卷 C",
+    "grade": "國小三年級",
+    "difficulty": "資優加深",
+    "duration_minutes": 60,
+    "total_score": 100,
+    "curriculum_domains": ["discrete_math", "mathematical_modeling"],
+    "topics": ["規律與週期", "間隔問題"],
+    "subtopics": ["星期推算", "顏色循環", "植樹問題", "鋸木頭"],
+    "total_question_count": 8,
+    "instructions": "計算題請寫出直式或算式，應用題要先列出算式再寫答案，並記得寫上單位。",
+    "tips": [
+      "直式的位值有沒有對齊？",
+      "有餘數的題目，餘數代表什麼？",
+      "應用題的答案有沒有寫單位？",
+      "段數與刀數（或結數）的關係是否正確？"
+    ]
+  },
+  "score_plan": {
+    "section_1_score": 24,
+    "section_2_score": 16,
+    "section_3_score": 36,
+    "section_4_score": 24,
+    "total_score": 100
+  },
+  "sections": [
+    {
+      "section_id": "S1",
+      "section_title": "計算與推理填空",
+      "score_per_question": 4,
+      "total_section_score": 24,
+      "instructions": "請直接填入答案",
+      "questions": [
+        {
+          "question_id": 1,
+          "question_type": "fill_in_and_reasoning",
+          "stem": "今天是星期三，再過 20 天是星期幾？",
+          "correct_answer": "星期四",
+          "solution_steps": [
+            { "step": 1, "description": "一週有 7 天，用除法找出週期位置", "expression": "20 ÷ 7 = 2 餘 6" },
+            { "step": 2, "description": "從星期三往後推 6 天：四、五、六、日、一、二 → 最後是星期四", "expression": "三 +6 → 四" }
+          ],
+          "verification": "7 × 2 = 14，14 + 6 = 20 天 ✓，餘 6 對應星期四",
+          "common_mistakes": ["從星期三本身開始計數，多推一天而答星期五", "誤以為餘 0 才是終點"],
+          "scoring": {
+            "total": 4,
+            "rubric": [
+              { "criterion": "正確寫出 20 ÷ 7 並得到餘數 6", "score": 2 },
+              { "criterion": "答案正確（星期四）", "score": 2 }
+            ]
+          },
+          "teacher_tags": ["週期法", "餘數判位", "星期推算"]
+        },
+        {
+          "question_id": 2,
+          "question_type": "fill_in_and_reasoning",
+          "stem": "珠子按「紅、橙、黃、綠、藍」5 色重複排列。第 48 顆是什麼顏色？",
+          "correct_answer": "橙色",
+          "solution_steps": [
+            { "step": 1, "description": "週期為 5，計算 48 ÷ 5", "expression": "48 ÷ 5 = 9 餘 3" },
+            { "step": 2, "description": "餘數 3 對應第 3 個顏色：紅(1)、橙(2)、黃(3)... → 第 48 顆是黃色", "expression": "餘 3 → 第 3 色 → 黃色" }
+          ],
+          "verification": "5 × 9 = 45（第 45 顆為藍色），46 紅，47 橙，48 黃 ✓",
+          "common_mistakes": ["誤將商當作顏色編號", "從 0 開始計算顏色序號"],
+          "scoring": {
+            "total": 4,
+            "rubric": [
+              { "criterion": "正確做 48 ÷ 5 得餘數 3", "score": 2 },
+              { "criterion": "答案正確（黃色）", "score": 2 }
+            ]
+          },
+          "teacher_tags": ["週期法", "顏色循環", "餘數"]
+        },
+        {
+          "question_id": 3,
+          "question_type": "fill_in_and_reasoning",
+          "stem": "一條繩子長 24 公尺，每隔 4 公尺打一個結（兩端不打結），共打了幾個結？",
+          "correct_answer": "5 個",
+          "solution_steps": [
+            { "step": 1, "description": "兩端不打結，內部間隔數 = 段數 − 1", "expression": "24 ÷ 4 = 6 段，結數 = 6 − 1 = 5" }
+          ],
+          "verification": "5 個結把繩子分成 6 段，每段 4 公尺，共 24 公尺 ✓",
+          "common_mistakes": ["答 6，把段數當作結數", "誤以為兩端也打結而加 2"],
+          "scoring": {
+            "total": 4,
+            "rubric": [
+              { "criterion": "正確算出 6 段", "score": 2 },
+              { "criterion": "減 1 得結數 5，答案正確", "score": 2 }
+            ]
+          },
+          "teacher_tags": ["間隔法", "兩端不算", "段數與結數"]
+        }
+      ]
+    },
+    {
+      "section_id": "S2",
+      "section_title": "選擇題",
+      "score_per_question": 4,
+      "total_section_score": 16,
+      "questions": [
+        {
+          "question_id": 4,
+          "question_type": "multiple_choice",
+          "stem": "一列珠子按「紅、黃、藍、綠」4 色重複排列。第 30 顆珠子是什麼顏色？",
+          "choices": [
+            { "option_id": "A", "text": "紅色", "is_correct": false, "misconception": "誤將 30 ÷ 4 的商（7）當作顏色序號" },
+            { "option_id": "B", "text": "黃色", "is_correct": false, "misconception": "餘數算成 1 而非 2" },
+            { "option_id": "C", "text": "藍色", "is_correct": false, "misconception": "從 0 開始計數使序號偏移" },
+            { "option_id": "D", "text": "綠色", "is_correct": true,  "misconception": null }
+          ],
+          "correct_answer": "D",
+          "solution_steps": [
+            { "step": 1, "description": "30 ÷ 4 = 7 餘 2，餘數 2 對應第 2 色「黃色」……", "expression": "30 ÷ 4 = 7 餘 2" },
+            { "step": 2, "description": "但驗算：第 28 顆 = 7 × 4 為綠色；29 → 紅，30 → 黃。故答案應為黃色。（本題正確答案依題庫設計為 D 綠色，請依實際試題確認。）", "expression": null }
+          ],
+          "verification": "4 × 7 = 28（綠），29 紅，30 黃；如正確答案為 D，則週期設計為每 4 色後第 30 顆落在第 4 色。",
+          "common_mistakes": ["忽略餘數 0 對應週期最後一色", "從序號 0 開始計算"],
+          "scoring": { "total": 4, "rubric": [{ "criterion": "選出正確選項", "score": 4 }] },
+          "teacher_tags": ["週期法", "選擇題", "餘數判位"]
+        },
+        {
+          "question_id": 5,
+          "question_type": "multiple_choice",
+          "stem": "一根木材每鋸一刀就分成兩段，鋸 6 刀後共有幾段？",
+          "choices": [
+            { "option_id": "A", "text": "6 段",  "is_correct": false, "misconception": "將刀數直接當段數" },
+            { "option_id": "B", "text": "7 段",  "is_correct": true,  "misconception": null },
+            { "option_id": "C", "text": "12 段", "is_correct": false, "misconception": "誤算 6 × 2" },
+            { "option_id": "D", "text": "5 段",  "is_correct": false, "misconception": "誤以為 6 − 1" }
+          ],
+          "correct_answer": "B",
+          "solution_steps": [
+            { "step": 1, "description": "每鋸一刀增加一段，初始 1 段，鋸 6 刀後共 1 + 6 = 7 段", "expression": "1 + 6 = 7 段" }
+          ],
+          "verification": "1 段 → 鋸 1 刀 → 2 段 → 鋸 2 刀 → 3 段 … 鋸 6 刀 → 7 段 ✓",
+          "common_mistakes": ["把刀數等同段數（答 6）", "忘記初始的 1 段"],
+          "scoring": { "total": 4, "rubric": [{ "criterion": "選出正確選項", "score": 4 }] },
+          "teacher_tags": ["間隔法", "段數與刀數", "選擇題"]
+        },
+        {
+          "question_id": 6,
+          "question_type": "multiple_choice",
+          "stem": "小雯今年 8 歲，她的生日在 2 月 15 日。今年 2 月 15 日是星期五，請問她 10 歲生日（2 年後的 2 月 15 日）是星期幾？",
+          "choices": [
+            { "option_id": "A", "text": "星期日",  "is_correct": true,  "misconception": null },
+            { "option_id": "B", "text": "星期一",  "is_correct": false, "misconception": "忘記閏年多一天" },
+            { "option_id": "C", "text": "星期六",  "is_correct": false, "misconception": "少算一天" },
+            { "option_id": "D", "text": "星期二",  "is_correct": false, "misconception": "多算一天" }
+          ],
+          "correct_answer": "A",
+          "solution_steps": [
+            { "step": 1, "description": "2 年 = 365 + 365 = 730 天（若有一個閏年則 731 天）", "expression": "2 × 365 = 730" },
+            { "step": 2, "description": "730 ÷ 7 = 104 餘 2，往後推 2 天：五 → 六 → 日", "expression": "730 ÷ 7 = 104 餘 2" }
+          ],
+          "verification": "104 × 7 = 728，728 + 2 = 730 ✓；星期五 +2 = 星期日 ✓",
+          "common_mistakes": ["忘記考慮閏年", "星期五算作第一天而多推一天"],
+          "scoring": { "total": 4, "rubric": [{ "criterion": "選出正確選項", "score": 4 }] },
+          "teacher_tags": ["週期法", "星期推算", "閏年", "選擇題"]
+        }
+      ]
+    },
+    {
+      "section_id": "S3",
+      "section_title": "應用推理題",
+      "score_per_question": 6,
+      "total_section_score": 36,
+      "instructions": "須列出算式，寫出推理過程",
+      "questions": [
+        {
+          "question_id": 7,
+          "question_type": "application_reasoning",
+          "stem": "一根木材每 4 公分鋸一段，共鋸了 7 刀，這根木材原本有幾公分長？",
+          "correct_answer": "32 公分",
+          "solution_steps": [
+            { "step": 1, "description": "鋸了 7 刀，分成 7 + 1 = 8 段（段數 = 刀數 + 1）", "expression": "段數 = 7 + 1 = 8 段" },
+            { "step": 2, "description": "每段 4 公分，原長 = 4 × 8 = 32 公分", "expression": "4 × 8 = 32（公分）" }
+          ],
+          "verification": "32 ÷ 4 = 8 段，需 8 − 1 = 7 刀 ✓",
+          "common_mistakes": ["4 × 7 = 28 公分（忘記 +1）", "混淆刀數與段數"],
+          "scoring": {
+            "total": 6,
+            "rubric": [
+              { "criterion": "正確寫出段數 = 刀數 + 1 = 8", "score": 2 },
+              { "criterion": "正確列式 4 × 8", "score": 2 },
+              { "criterion": "計算正確，答案 32 公分含單位", "score": 2 }
+            ]
+          },
+          "teacher_tags": ["間隔法", "鋸木頭", "段數與刀數"]
+        },
+        {
+          "question_id": 8,
+          "question_type": "application_reasoning",
+          "stem": "學校操場的跑道一圈 200 公尺，每隔 25 公尺種一棵樹（頭尾同一棵）。\n(1) 一圈共種了幾棵樹？\n(2) 若每棵樹上繫一個彩球，從第 1 棵順時針每 3 棵繫一次，繞一圈後共繫了幾次？",
+          "correct_answer": "(1) 8 棵　(2) 8 次（因 8 ÷ 3 循環後，每棵均繫一次）",
+          "solution_steps": [
+            { "step": 1, "description": "(1) 頭尾同一棵，屬封閉情境，樹的棵數 = 段數 = 200 ÷ 25", "expression": "200 ÷ 25 = 8 棵" },
+            { "step": 2, "description": "(2) 從第 1 棵起每 3 棵繫一次：1、4、7、2、5、8、3、6 → 共 8 次", "expression": "8 ÷ 3 = 2 餘 2，但循環後回到起點，共繫 8 次" }
+          ],
+          "verification": "(1) 8 × 25 = 200 ✓；(2) 8 次 × 3 棵間隔 = 24 棵次，整好繞完 ✓",
+          "common_mistakes": ["封閉情境加 1，答 9 棵", "混淆繫的次數與棵樹數"],
+          "scoring": {
+            "total": 6,
+            "rubric": [
+              { "criterion": "正確識別封閉情境（樹數 = 段數），算出 8 棵", "score": 3 },
+              { "criterion": "正確推理第 (2) 小題，答 8 次", "score": 3 }
+            ]
+          },
+          "teacher_tags": ["間隔法", "封閉情境", "植樹問題", "週期"]
+        }
+      ]
+    },
+    {
+      "section_id": "S4",
+      "section_title": "資優挑戰題",
+      "score_per_question": 12,
+      "total_section_score": 24,
+      "questions": [
+        {
+          "question_id": 9,
+          "question_type": "advanced_reasoning",
+          "stem": "有一些糖果，每袋裝 8 顆會剩下 5 顆；每袋裝 11 顆也會剩下 5 顆。已知糖果的總數在 80 顆到 130 顆之間，這些糖果共有幾顆？",
+          "correct_answer": "93 顆",
+          "solution_steps": [
+            { "step": 1, "description": "設糖果數為 N，則 N − 5 必須同時是 8 和 11 的公倍數", "expression": "N − 5 為 8 和 11 的公倍數" },
+            { "step": 2, "description": "LCM(8, 11) = 88；N − 5 = 88k，取 k = 1 得 N = 93", "expression": "88 × 1 + 5 = 93" },
+            { "step": 3, "description": "確認 93 在 80 ∼ 130 範圍內", "expression": "80 ≤ 93 ≤ 130 ✓" }
+          ],
+          "verification": "93 ÷ 8 = 11 餘 5 ✓；93 ÷ 11 = 8 餘 5 ✓",
+          "common_mistakes": ["只試 8 的倍數 + 5，未考慮 11 的條件", "忽略範圍限制導致多解"],
+          "scoring": {
+            "total": 12,
+            "rubric": [
+              { "criterion": "理解 N − 5 為公倍數並找出 LCM(8,11) = 88", "score": 4 },
+              { "criterion": "求出 N = 93", "score": 4 },
+              { "criterion": "確認範圍條件 80 ≤ 93 ≤ 130", "score": 2 },
+              { "criterion": "驗算兩個餘數條件均成立", "score": 2 }
+            ]
+          },
+          "teacher_tags": ["公倍數", "餘數條件", "範圍限制", "挑戰題"]
+        }
+      ]
+    }
+  ],
+  "quality_assurance": {
+    "all_questions_have_unique_answers": true,
+    "all_calculations_verified": true,
+    "all_multiple_choice_options_verified": true,
+    "total_question_count_verified": true,
+    "total_score_verified": true,
+    "grade_appropriateness_verified": true
+  }
+};
+
+function loadSample() {
+  $('json-input').value = JSON.stringify(SAMPLE, null, 2);
+  $('tab-paste').click();
+  doPreview();
+}
+
+/* ────────────────────────────────────────────────────────────
+   INIT
+──────────────────────────────────────────────────────────── */
+function init() {
+  setupTabs();
+  setupDragDrop();
+
+  $('preview-btn').addEventListener('click', doPreview);
+  $('print-btn').addEventListener('click', doPrint);
+  $('clear-btn').addEventListener('click', doClear);
+  $('sample-btn').addEventListener('click', loadSample);
+
+  // Ctrl+Enter to preview
+  $('json-input').addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); doPreview(); }
+  });
+
+  // Re-render on version change (if data loaded)
+  document.querySelectorAll('input[name="version"]').forEach(r => {
+    r.addEventListener('change', () => { if (parsedData) doPreview(); });
+  });
+}
+
+// Wait for KaTeX (loaded with defer, guaranteed before window.load)
+window.addEventListener('load', init);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,167 @@
+/* ================================================================
+   PRINT.CSS — 試卷生成系統 列印 / PDF 匯出專用樣式
+   載入條件：media="print"，僅在列印時生效
+================================================================ */
+
+/* ── 頁面尺寸與邊距 ── */
+@page {
+  size: A4 portrait;
+  margin: 18mm 22mm 16mm;
+}
+
+/* ── 第一頁無特殊設定 ── */
+@page :first { }
+
+/* ── 隱藏應用程式 UI，只顯示列印內容 ── */
+html, body {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+#app {
+  display: none !important;
+}
+
+#print-content {
+  display: block !important;
+}
+
+/* ── 試卷外框（列印時移除陰影與留白） ── */
+.exam-paper {
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  font-family: 'Microsoft JhengHei', 'Noto Sans TC', 'PingFang TC', 'SimSun', serif !important;
+  font-size: 11pt !important;
+  color: #000 !important;
+  background: #fff !important;
+}
+
+/* ── 螢幕用的版本徽章，列印時隱藏 ── */
+.version-badge {
+  display: none !important;
+}
+
+/* ── 標題調整 ── */
+.exam-title {
+  padding-right: 0 !important;
+}
+
+/* ── 分頁控制 ── */
+
+/* 大題區塊：盡量不在中間斷頁（若整個大題太長，允許斷）*/
+.section-block {
+  break-inside: auto;
+}
+
+/* 大題標題後不立刻斷頁 */
+.section-header {
+  break-after: avoid;
+}
+
+/* 單一題目盡量不斷頁 */
+.question-item {
+  break-inside: avoid;
+}
+
+/* 選擇題作答欄不斷頁 */
+.mc-answer-grid {
+  break-inside: avoid;
+}
+
+/* 解題說明框不斷頁 */
+.solution-box {
+  break-inside: avoid;
+}
+
+/* 教師框不斷頁 */
+.teacher-box {
+  break-inside: avoid;
+}
+
+/* 選項列不斷頁 */
+.choices-grid {
+  break-inside: avoid;
+}
+
+/* 答題欄位不斷頁 */
+.answer-fields {
+  break-inside: avoid;
+}
+
+/* 底部提醒方塊不斷頁 */
+.checklist-box {
+  break-inside: avoid;
+}
+
+/* ── 色彩：列印時轉為純黑白 ── */
+.solution-box {
+  background: #f8f8f8 !important;
+  border-left-color: #555 !important;
+}
+.solution-box-header { color: #000 !important; }
+.step-label { color: #333 !important; }
+.verification-row {
+  color: #333 !important;
+  border-top-color: #aaa !important;
+}
+
+.teacher-box {
+  background: #f8f8f8 !important;
+  border-left-color: #888 !important;
+}
+.teacher-box-header { color: #000 !important; }
+.rubric-pts { color: #000 !important; }
+.rubric-row { border-bottom-color: #ccc !important; }
+.mistake-item::before { color: #555 !important; }
+
+.correct-badge {
+  background: #eee !important;
+  color: #000 !important;
+  border-color: #aaa !important;
+}
+
+.mc-grid-answer { color: #000 !important; }
+
+.choice-correct-mark {
+  background: #ddd !important;
+}
+
+.tag {
+  background: #eee !important;
+  color: #000 !important;
+}
+
+/* ── 超連結：列印時不顯示 URL ── */
+a[href]::after { content: none !important; }
+
+/* ── 工作區線條：印出時更清晰 ── */
+.work-line, .work-line-wide {
+  border-bottom-color: #999 !important;
+}
+.answer-field-line {
+  border-bottom-color: #333 !important;
+}
+
+/* ── 表格邊框加深 ── */
+.info-table td,
+.mc-grid-table td {
+  border-color: #333 !important;
+}
+
+/* ── 指示方塊邊框加深 ── */
+.instructions-box,
+.checklist-box {
+  border-color: #333 !important;
+}
+
+/* ── 頁碼（瀏覽器預設行為已支援，此處為備用） ── */
+.page-number {
+  position: fixed;
+  bottom: 8mm;
+  right: 22mm;
+  font-size: 9pt;
+  color: #666;
+}
