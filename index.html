@@ -942,11 +942,68 @@ function renderMath(text) {
 }
 
 function esc(s) {
-  return String(s)
+  return String(s ?? '')
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
+}
+
+/**
+ * Convert any JSON value to a human-readable string for display.
+ *
+ * Priority order for objects:
+ *  1. Known scalar text fields (text, value, content, answer, …)
+ *  2. Object with a "unit" companion → pair each value with its unit
+ *  3. All scalar values joined by 、
+ *  4. Recurse into nested values joined by ；
+ */
+function anyToStr(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string')  return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+
+  if (Array.isArray(val)) {
+    return val.map(anyToStr).filter(Boolean).join('；');
+  }
+
+  if (typeof val === 'object') {
+    // 1. Try common scalar text-bearing fields
+    const TEXT_KEYS = ['text','value','content','answer','label','summary',
+                       'description','final_answer','result','display','formatted'];
+    for (const k of TEXT_KEYS) {
+      if (val[k] !== undefined && val[k] !== null) {
+        const s = anyToStr(val[k]);
+        if (s) return s;
+      }
+    }
+
+    // 2. Has a "unit" companion object → combine value + unit for each key
+    if (val.unit && typeof val.unit === 'object') {
+      const parts = Object.entries(val)
+        .filter(([k, v]) =>
+          k !== 'unit' &&
+          v !== null && v !== undefined &&
+          typeof v !== 'object' && typeof v !== 'function'
+        )
+        .map(([k, v]) => `${v}${val.unit[k] ?? ''}`);
+      if (parts.length) return parts.join('、');
+    }
+
+    // 3. Collect all scalar values (ignore nested objects)
+    const scalars = Object.entries(val)
+      .filter(([, v]) =>
+        v !== null && v !== undefined &&
+        typeof v !== 'object' && typeof v !== 'function'
+      )
+      .map(([, v]) => String(v));
+    if (scalars.length) return scalars.join('、');
+
+    // 4. Recurse into nested object values
+    return Object.values(val).map(anyToStr).filter(Boolean).join('；');
+  }
+
+  return String(val);
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -983,18 +1040,30 @@ function validateData(data) {
 function renderChoices(choices, version) {
   if (!Array.isArray(choices) || choices.length === 0) return '';
   const showAnswer = version !== 'student';
+  const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-  // Decide grid columns based on longest option text
-  const maxLen = Math.max(...choices.map(c => String(c.text || '').length));
+  // Normalise each choice to { id, text, isCorrect }
+  const normalised = choices.map((c, idx) => {
+    // Support multiple possible field names for the option identifier
+    const id = c.option_id ?? c.id ?? c.label ?? c.key ?? OPTION_LETTERS[idx] ?? String(idx + 1);
+    // Support multiple possible field names for the option text
+    const text = c.text ?? c.content ?? c.value ?? c.description ?? '';
+    // Support multiple possible field names for correctness
+    const isCorrect = c.is_correct ?? c.correct ?? c.isCorrect ?? false;
+    return { id: String(id), text, isCorrect };
+  });
+
+  // Decide grid columns based on longest option text length
+  const maxLen = Math.max(...normalised.map(c => String(c.text).length));
   let gridClass = 'choices-grid';
-  if (maxLen > 20)  gridClass = 'choices-grid choices-1col';
-  else if (maxLen <= 6) gridClass = 'choices-grid choices-4col';
+  if (maxLen > 20)       gridClass = 'choices-grid choices-1col';
+  else if (maxLen <= 6)  gridClass = 'choices-grid choices-4col';
 
   let html = `<div class="${gridClass}">`;
-  for (const c of choices) {
-    const isCorrect = showAnswer && c.is_correct;
+  for (const c of normalised) {
+    const isCorrect = showAnswer && c.isCorrect;
     html += `<div class="choice-item">
-      <span class="choice-label${isCorrect ? ' choice-correct-mark' : ''}">(${esc(c.option_id)})</span>
+      <span class="choice-label${isCorrect ? ' choice-correct-mark' : ''}">(${esc(c.id)})</span>
       <span>${renderMath(c.text)}</span>
     </div>`;
   }
@@ -1031,8 +1100,9 @@ function renderMcAnswerGrid(mcList, version) {
   for (const { num } of mcList) html += `<td>${num}</td>`;
   html += '</tr><tr><td>答案</td>';
   for (const { q } of mcList) {
-    if (showAnswer && q.correct_answer) {
-      html += `<td class="mc-grid-answer">${esc(String(q.correct_answer))}</td>`;
+    const ans = q.correct_answer ?? q.answer ?? q.correctAnswer ?? q.correct ?? null;
+    if (showAnswer && ans !== null) {
+      html += `<td class="mc-grid-answer">${esc(anyToStr(ans))}</td>`;
     } else {
       html += '<td>&nbsp;</td>';
     }
@@ -1045,25 +1115,86 @@ function renderSolutionBox(q) {
   let html = `<div class="solution-box">
     <div class="solution-box-header">解題說明</div>`;
 
-  if (Array.isArray(q.solution_steps)) {
-    for (const step of q.solution_steps) {
-      html += `<div class="solution-step">
-        <span class="step-label">步驟 ${step.step}：</span>
-        <div class="step-desc">${renderMath(step.description || '')}</div>
-      </div>`;
-      if (step.expression) {
-        html += `<div class="step-expr">${renderMath(step.expression)}</div>`;
+  // Support multiple field names for the steps array itself
+  const stepsArr = q.solution_steps ?? q.steps ?? q.solutionSteps ??
+                   q.solution ?? q.reasoning_steps ?? q.procedure ?? [];
+
+  if (Array.isArray(stepsArr) && stepsArr.length > 0) {
+    stepsArr.forEach((step, idx) => {
+      // Handle the case where a step is a plain string (not an object)
+      if (typeof step === 'string') {
+        html += `<div class="solution-step">
+          <span class="step-label">步驟 ${idx + 1}：</span>
+          <div class="step-desc">${renderMath(step)}</div>
+        </div>`;
+        return;
       }
-    }
+
+      // Step number — try multiple field names, fall back to 1-based index
+      const stepNum = step.step ?? step.step_number ?? step.number ??
+                      step.order ?? step.index ?? step.id ?? (idx + 1);
+
+      // Description text — try an extensive list of possible field names
+      const desc = step.description   ??
+                   step.content       ??
+                   step.text          ??
+                   step.detail        ??
+                   step.action        ??
+                   step.explanation   ??
+                   step.explain       ??
+                   step.process       ??
+                   step.reasoning     ??
+                   step.reason        ??
+                   step.work          ??
+                   step.statement     ??
+                   step.note          ??
+                   step.procedure     ??
+                   step.instruction   ??
+                   step.narration     ??
+                   step.analysis      ??
+                   step.solution      ??
+                   step.comment       ??
+                   step.hint          ??
+                   // Last resort: collect all string-valued fields that aren't the step number
+                   Object.entries(step)
+                     .filter(([k, v]) =>
+                       !['step','step_number','number','order','index','id',
+                         'expression','formula','equation','math','calculation',
+                         'compute','result','answer'].includes(k) &&
+                       typeof v === 'string' && v.length > 0
+                     )
+                     .map(([, v]) => v)
+                     .join('　') ??
+                   '';
+
+      // Math expression — try multiple field names
+      const expr = step.expression  ??
+                   step.formula     ??
+                   step.equation    ??
+                   step.math        ??
+                   step.calculation ??
+                   step.compute     ??
+                   null;
+
+      html += `<div class="solution-step">
+        <span class="step-label">步驟 ${stepNum}：</span>
+        <div class="step-desc">${renderMath(anyToStr(desc))}</div>
+      </div>`;
+      if (expr) {
+        html += `<div class="step-expr">${renderMath(anyToStr(expr))}</div>`;
+      }
+    });
   }
 
   if (q.alternative_methods && q.alternative_methods.length > 0) {
     html += `<div style="margin-top:6px;color:#0369a1;font-size:9.5pt;font-weight:700">
-      其他解法：${q.alternative_methods.map(m => esc(m)).join('；')}</div>`;
+      其他解法：${q.alternative_methods.map(m => esc(anyToStr(m))).join('；')}</div>`;
   }
 
-  if (q.verification) {
-    html += `<div class="verification-row">✓ 驗算：${renderMath(q.verification)}</div>`;
+  // Support multiple field names for verification text
+  const verif = q.verification ?? q.check ?? q.verify ?? null;
+  if (verif) {
+    html += `<div class="verification-row">✓ 驗算：${renderMath(anyToStr(verif))}</div>`;
   }
 
   html += '</div>';
@@ -1078,9 +1209,13 @@ function renderTeacherBox(q) {
     hasContent = true;
     html += `<div class="teacher-box-header">給分規準（共 ${q.scoring.total ?? '?'} 分）</div>`;
     for (const r of q.scoring.rubric) {
+      // Support criterion / criteria / description / text as field name
+      const crit = r.criterion ?? r.criteria ?? r.description ?? r.text ?? r.content ?? '';
+      // Support score / points / point / marks as field name
+      const pts  = r.score ?? r.points ?? r.point ?? r.marks ?? r.value ?? '';
       html += `<div class="rubric-row">
-        <span class="rubric-criterion">${renderMath(r.criterion || '')}</span>
-        <span class="rubric-pts">${r.score} 分</span>
+        <span class="rubric-criterion">${renderMath(anyToStr(crit))}</span>
+        <span class="rubric-pts">${pts} 分</span>
       </div>`;
     }
   }
@@ -1089,7 +1224,7 @@ function renderTeacherBox(q) {
     hasContent = true;
     html += '<div class="mistakes-header">常見錯誤</div>';
     for (const m of q.common_mistakes) {
-      html += `<div class="mistake-item">${renderMath(m)}</div>`;
+      html += `<div class="mistake-item">${renderMath(anyToStr(m))}</div>`;
     }
   }
 
@@ -1112,10 +1247,14 @@ function renderQuestion(q, version, num, sectionQtype) {
   const isMC  = qtype === 'multiple_choice';
   const showAnswer = version !== 'student';
 
+  // Normalise correct_answer — support multiple field names and any value type
+  const correctAnswer = q.correct_answer ?? q.final_answer ?? q.answer ??
+                        q.correctAnswer ?? q.correct ?? null;
+
   let html = `<div class="question-item">
     <div class="q-num">${num}.</div>
     <div class="q-body">
-      <div class="q-stem">${renderMath(q.stem || '')}</div>`;
+      <div class="q-stem">${renderMath(anyToStr(q.stem ?? q.question ?? q.content ?? q.body ?? ''))}</div>`;
 
   // Choices (MC)
   if (isMC && Array.isArray(q.choices)) {
@@ -1128,12 +1267,14 @@ function renderQuestion(q, version, num, sectionQtype) {
   }
 
   // Correct answer badge (answer/solution/teacher mode, non-MC)
-  if (showAnswer && !isMC && q.correct_answer !== undefined && q.correct_answer !== null) {
-    html += `<div class="correct-badge">答：${renderMath(String(q.correct_answer))}</div>`;
+  if (showAnswer && !isMC && correctAnswer !== null) {
+    html += `<div class="correct-badge">答：${renderMath(anyToStr(correctAnswer))}</div>`;
   }
 
-  // Solution steps (solution + teacher)
-  if ((version === 'solution' || version === 'teacher') && q.solution_steps) {
+  // Solution steps (solution + teacher) — check multiple possible field names
+  const hasSteps = q.solution_steps ?? q.steps ?? q.solutionSteps ??
+                   q.solution ?? q.reasoning_steps ?? q.procedure;
+  if ((version === 'solution' || version === 'teacher') && hasSteps) {
     html += renderSolutionBox(q);
   }
 
